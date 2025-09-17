@@ -74,7 +74,7 @@ namespace PayrollApplication
         }
         static void Main(string[] args)
         {
-            string connectionString = "User Id=SYSTEM;Password=libhongo6;Data Source=localhost:1521/xepdb1;Pooling=false";
+            string connectionString = "User Id=SYSTEM;Password=mypassword;Data Source=localhost:1521/xepdb1;Pooling=false";
 
             using (OracleConnection conn = new OracleConnection(connectionString))
             {
