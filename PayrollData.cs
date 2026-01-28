@@ -14,12 +14,11 @@ namespace PayrollApplication
     public class PayrollData
     {
 
-        public float EmployeeID { get; set; }
-        public float Salary { get; set; }
-        public float CommissionPct { get; set; }
-        public float DepartmentID { get; set; }
+        public int EmployeeID { get; set; }
+        public decimal Salary { get; set; }
+        public int DepartmentID { get; set; }
         public string JobID { get; set; }
-        public float ManagerID { get; set; }
+        public int? ManagerID { get; set; }
        
     }
 

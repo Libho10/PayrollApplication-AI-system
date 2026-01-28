@@ -59,13 +59,12 @@ namespace PayrollApplication
                 {
                     payrollList.Add(new PayrollData
                     {
-                        EmployeeID = reader.IsDBNull(0) ? 0 : Convert.ToSingle(reader.GetDecimal(0)),
-                        Salary = reader.IsDBNull(1) ? 0 : Convert.ToSingle(reader.GetDecimal(1)),
-                        CommissionPct = reader.IsDBNull(2) ? 0 : Convert.ToSingle(reader.GetDecimal(2)),
-                        DepartmentID = reader.IsDBNull(3) ? 0 : Convert.ToSingle(reader.GetDecimal(3)),
-                        JobID = reader.IsDBNull(4) ? string.Empty: reader.GetString(4), //<--- edited
-                        ManagerID = reader.IsDBNull(5) ? 0 : Convert.ToSingle(reader.GetDecimal(5))
-                    });
+                        EmployeeID = reader.GetInt32(0),//IsDBNull(0) ? 0 : Convert.ToSingle(reader.GetDecimal(0)),
+                        Salary = reader.IsDBNull(1) ? 0 : reader.GetDecimal(1),//Convert.ToSingle(reader.GetDecimal(1)),
+                        DepartmentID = reader.IsDBNull(2) ? 0 : reader.GetInt32(2), //Convert.ToSingle(reader.GetDecimal(3)),
+                        JobID = reader.IsDBNull(3) ? string.Empty : reader.GetString(3), //<--- edited
+                        ManagerID = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4)
+                    }); 
                 }
 
             }
@@ -74,7 +73,7 @@ namespace PayrollApplication
         }
         static void Main(string[] args)
         {
-            string connectionString = "User Id=SYSTEM;Password=libhongo6;Data Source=localhost:1521/xepdb1;Pooling=false";
+            string connectionString = "User Id=SYSTEM;Password=balh;Data Source=localhost:1521/xepdb1;Pooling=false";
 
             using (OracleConnection conn = new OracleConnection(connectionString))
             {
@@ -93,15 +92,15 @@ namespace PayrollApplication
                     var pipeline = mlContext.Transforms.Categorical.OneHotEncoding( outputColumnName: "JobIDEncoded", inputColumnName: nameof(PayrollData.JobID))
                         .Append(mlContext.Transforms.Concatenate("Features", 
                         nameof(PayrollData.EmployeeID),
-                        nameof(PayrollData.Salary),
-                        nameof(PayrollData.CommissionPct),                    
+                        nameof(PayrollData.Salary),                   
                         nameof(PayrollData.DepartmentID),
                           "JobIDEncoded",
                         nameof(PayrollData.ManagerID))).Append(mlContext.AnomalyDetection.Trainers.RandomizedPca(featureColumnName: "Features", rank: 3));
 
                     var model = pipeline.Fit(dataView); // Trains the anomaly detection model. 
                     Console.WriteLine("Trained anomaly detection model");
-                    var transformatedData = model.Transform(dataView); //will use the model to make prediction s on the same dataset. 
+
+                    var transformatedData = model.Transform(dataView); //will use the model to make predictions on the same dataset. 
                     var predictions = mlContext.Data.CreateEnumerable<PayrollAnomalyPrediction>(transformatedData, reuseRowObject: false);
 
                     Console.WriteLine("\nEmployeeID | AnomalyScore");
@@ -182,7 +181,7 @@ namespace PayrollApplication
            try { 
                 string sql = "SELECT EmployeeID, FirstName, LastName FROM Employees";
 
-                 using (OracleCommand cmd = new OracleCommand(sql, conn))
+                using (OracleCommand cmd = new OracleCommand(sql, conn))
                 using (OracleDataReader reader = cmd.ExecuteReader())
                 {
                     Console.WriteLine("\nEmployee List:");
@@ -194,10 +193,12 @@ namespace PayrollApplication
                     Console.WriteLine($"ID: {EmployeeId}, Name: {Firstname} {lastName}");
                      }
                  }
-            } catch (OracleException ex)
+            }
+            catch (OracleException ex)
             {
                 Console.WriteLine($"oracle error {ex.Number}: {ex.Message}");
-            }catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 Console.WriteLine($"Error viewing employees: {ex.Message} "); 
             }
@@ -283,7 +284,7 @@ namespace PayrollApplication
             List<string> jobIds = GetJobIDs(conn);
             if (jobIds.Count == 0)
             {
-                Console.WriteLine("No Jobs IDs foudn in this database.");
+                Console.WriteLine("No Jobs IDs found in this database.");
                 return;
             }
             Console.WriteLine("Select Job ID: ");
@@ -306,23 +307,7 @@ namespace PayrollApplication
                 return;
             }
 
-            // commission percentage
-            Console.Write("Enter Commission Percentage (or leave is blank): ");
-            string commissionInput = Console.ReadLine().Trim();
-            decimal? commissionPct = null;
-
-            if (!string.IsNullOrEmpty(commissionInput))
-            {
-                if (decimal.TryParse(commissionInput, out decimal commission))
-                {
-                    commissionPct = commission;
-                }
-                else
-                {
-                    Console.WriteLine("Invalid commision percentage. ");
-                    return;
-                }
-            }
+       
 
             // Manager ID
             Console.Write("Enter Manager ID (or leave it blank): ");
@@ -363,13 +348,12 @@ namespace PayrollApplication
 
 
             string sql = @"INSERT INTO Employees (FirstName, LastName, Email, PhoneNumber,  HireDate, JobID, Salary, CommissionPct, ManagerID, DepartmentID) 
-                           VALUES (:firstName, :lastName, :email, :phoneNumber, :hireDate, :jobId, :salary, :commissionPct, :managerId, :departmentId )";
+                           VALUES (:firstName, :lastName, :email, :phoneNumber, :hireDate, :jobId, :salary,:managerId, :departmentId )";
 
             using (OracleTransaction transaction = conn.BeginTransaction())
 
                 try
                 {
-
 
                     using (OracleCommand cmd = new OracleCommand(sql, conn))
                     {
@@ -382,12 +366,8 @@ namespace PayrollApplication
                         cmd.Parameters.Add(new OracleParameter("hireDate", hireDate));
                         cmd.Parameters.Add(new OracleParameter("jobId", selectedJobId));
                         cmd.Parameters.Add(new OracleParameter("salary", salary));
-                        cmd.Parameters.Add(new OracleParameter("commissionPct", commissionPct.HasValue ? (object)commissionPct.Value : DBNull.Value));
                         cmd.Parameters.Add(new OracleParameter("managerId",managerId.HasValue ? (object)managerId : DBNull.Value));
                         cmd.Parameters.Add(new OracleParameter("departmentId", selectedDeptId));
-
-
-
                         int rows = cmd.ExecuteNonQuery();
                         if (rows > 0)
                         {
@@ -418,10 +398,11 @@ namespace PayrollApplication
             }
 
             // checking if the employee even exists 
-            string selectSql = "SELECT EmployeeID, FirstName, LastName, Email, PhoneNumber, HireDate, JobID, CommissionPct, ManagerID, DepartmentID, Salary " +
+            string selectSql = "SELECT EmployeeID, FirstName, LastName, Email, PhoneNumber, HireDate, JobID, ManagerID, DepartmentID, Salary" +
                                "FROM Employees WHERE EmployeeID = :employeeId";
+
             string currentFirstName = "", currentLastName = "", currentEmail = "", currentPhoneNumber = "", currentJobId = "";
-            decimal? currentCommissionPct = null, currentSalary = null;
+            decimal? currentSalary = null;
             int? currentManagerId = null, currentDepartmentId = null;
 
             using (OracleCommand selectCmd = new OracleCommand(selectSql, conn))
@@ -437,7 +418,6 @@ namespace PayrollApplication
                         currentPhoneNumber = reader["PhoneNumber"].ToString();
                         currentJobId = reader["JobID"].ToString();
                         currentSalary = reader["Salary"] != DBNull.Value ? Convert.ToDecimal(reader["Salary"]) : (decimal?)null;
-                        currentCommissionPct = reader["CommissionPct"] != DBNull.Value ? Convert.ToDecimal(reader["CommissionPct"]) : (decimal?)null;
                         currentManagerId = reader["ManagerID"] != DBNull.Value ? Convert.ToInt32(reader["ManagerID"]) : (int?)null;
                         currentDepartmentId = reader["DepartmentID"] != DBNull.Value ? Convert.ToInt32(reader["DepartmentID"]) : (int?)null;
 
@@ -448,7 +428,6 @@ namespace PayrollApplication
                         Console.WriteLine($"Phone Number: {currentPhoneNumber}");
                         Console.WriteLine($"Job ID: {currentJobId}");
                         Console.WriteLine($"Salary: {currentSalary}");
-                        Console.WriteLine($"Commission Pct: {currentCommissionPct}");
                         Console.WriteLine($"Manager ID: {currentManagerId}");
                         Console.WriteLine($"Department ID: {currentDepartmentId}");
                         Console.WriteLine();
@@ -529,20 +508,7 @@ namespace PayrollApplication
             }
 
 
-            // Commission Pact (optional) 
-            decimal? newCommissionPct = currentCommissionPct;
-            while (true)
-            {
-                Console.Write($"Enter a new Commission Percentage (current: '{currentCommissionPct}'. Leave blank to keep): ");
-                string commissionInput = Console.ReadLine().Trim();
-                if (commissionInput == "") break;
-                if (decimal.TryParse(commissionInput, out decimal value))
-                {
-                    newCommissionPct = value;
-                    break;
-                }
-                Console.WriteLine("invalid commission percentage. Please enter a numeric value");
-            }
+        
 
 
             // Manager ID(optional) 
@@ -612,7 +578,6 @@ namespace PayrollApplication
             AddField("PhoneNumber", newPhoneNumber, currentPhoneNumber);
             AddField("JobID", newJobId, currentJobId);
             AddField("Salary", newSalary, currentSalary);
-            AddField("CommissionPct", newCommissionPct, currentCommissionPct);
             AddField("ManagerID", newManagerId, currentManagerId);
             AddField("DepartmentID", newDepartmentId, currentDepartmentId);
 
