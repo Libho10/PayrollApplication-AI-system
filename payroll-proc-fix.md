@@ -5,9 +5,50 @@
 
 ```sql
 -- OLD CODE PROBLEM:
-IF v_PayrollID IS NOT NULL THEN  -- Only if payroll exists!
-  -- Calculate deductions...
-END IF;
+  BEGIN
+        SELECT PayrollID INTO v_PayrollID
+        FROM Payroll
+        WHERE EmployeeID = p_EmployeeID
+          AND PayPeriodStart = p_PayPeriodStart
+          AND PayPeriodEnd = p_PayPeriodEnd;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            v_PayrollID := NULL;
+    END;
+
+    -- Calculate deductions only if payroll record exists
+    IF v_PayrollID IS NOT NULL THEN
+        SELECT NVL(SUM(CASE WHEN d.DeductionType = 'Percentage' THEN pd.DeductionAmount ELSE 0 END), 0),
+               NVL(SUM(CASE WHEN d.DeductionType = 'Fixed' THEN pd.DeductionAmount ELSE 0 END), 0)
+        INTO v_TaxDeductions, v_OtherDeductions
+        FROM PayrollDeductions pd
+        JOIN Deductions d ON pd.DeductionID = d.DeductionID
+        WHERE pd.PayrollID = v_PayrollID;
+    END IF;
+
+    -- Calculate net salary
+    v_NetSalary := v_GrossSalary - v_TaxDeductions - v_OtherDeductions - v_Deductions;
+
+    -- Insert or update Payroll record
+    IF v_PayrollID IS NULL THEN
+        INSERT INTO Payroll (EmployeeID, PayPeriodStart, PayPeriodEnd, GrossSalary, TaxDeductions, OtherDeductions, NetSalary, PaymentDate)
+        VALUES (p_EmployeeID, p_PayPeriodStart, p_PayPeriodEnd, v_GrossSalary, v_TaxDeductions, v_OtherDeductions, v_NetSalary, SYSDATE);
+    ELSE
+        UPDATE Payroll
+        SET GrossSalary = v_GrossSalary,
+            TaxDeductions = v_TaxDeductions,
+            OtherDeductions = v_OtherDeductions,
+            NetSalary = v_NetSalary,
+            PaymentDate = SYSDATE
+        WHERE PayrollID = v_PayrollID;
+    END IF;
+
+
+    COMMIT; 
+    EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM); ROLLBACK;
+END CalculateEmployeePayroll;
+/
+
 ```
 Result: First-time payroll runs → TaxDeductions=0, OtherDeductions=0. No PayrollDeductions links
 Before:
@@ -73,4 +114,5 @@ EXEC CalculateEmployeePayroll(3, '2025-07-01', '2025-07-15');
 
 SELECT * FROM Payroll WHERE EmployeeID=3 ORDER BY PayPeriodStart DESC;
 SELECT * FROM PayrollDeductions WHERE PayrollID = [new ID];
+
 
